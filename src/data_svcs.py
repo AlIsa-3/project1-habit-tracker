@@ -2,7 +2,7 @@ from __future__ import annotations
 import pathlib
 import pandas as pd
 
-# Habits stored as: Habit | Frequency | Target Goal | Category | Date Entered | Date Completed | Date Started | due_date | complete [True/False] | status (enabled or not) [True/False]
+# Habits stored as: Habit | Frequency | Target Goal | Category | Date Entered | Date Completed | Date Started | due_date | complete [True/False] | Enabled (enabled or not) [True/False]
 
 
 def read_csv_data(
