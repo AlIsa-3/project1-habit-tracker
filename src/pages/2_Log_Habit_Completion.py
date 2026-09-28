@@ -4,12 +4,13 @@ st.write("Habits Currently Available to be Completed:")
 
 st.write(
     st.session_state.data[
-        (st.session_state.data["complete"] != True)
-        & st.session_state.data["enabled"]
+        (st.session_state.data["complete"] != True) & st.session_state.data["enabled"]
         == True
-    ][['habit','frequency','category','target_goal','start_date','due_date']].head(10)
+    ][["habit", "frequency", "category", "target_goal", "start_date", "due_date"]].head(
+        10
+    )
 )
-with st.form("log_habit_form",clear_on_submit=True):
+with st.form("log_habit_form", clear_on_submit=True):
     id = st.text_input("Select record ID: ")
     submitted = st.form_submit_button("Submit")
 if submitted:

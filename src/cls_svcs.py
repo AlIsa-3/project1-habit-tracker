@@ -1,7 +1,9 @@
 from __future__ import annotations
 import pandas as pd
+import streamlit as st
 
 import data_svcs as data
+import api_svc as api
 
 
 class HabitTracker(pd.DataFrame):
@@ -64,21 +66,37 @@ class HabitTracker(pd.DataFrame):
             dictionary of habits and their optimal time ranges for completion
         """
         ranges = (
-            self.groupby([self["date"].dt.hour // hour_range, "habit"])["complete"]
+            self.groupby(
+                [
+                    pd.to_datetime(self["completion_date"]).dt.hour // hour_range,
+                    "habit",
+                    "category",
+                ]
+            )["complete"]
             .aggregate(["mean", "sum"])
             .sort_values(by=["mean", "sum"], ascending=False)
-            .groupby(["habit"])
+            .groupby(["habit", "category"])
             .head(n)
         )
 
         return {
-            habit: f"{time_range*hour_range} - {(time_range+1) * hour_range}"
-            for time_range, habit in ranges.index
+            "+".join(
+                [habit, category]
+            ): f"{time_range*hour_range} - {(time_range+1) * hour_range}"
+            for time_range, habit, category in ranges.index
         }
 
     # Data IO:
 
-    def add_new_habit(self, entry_date=None) -> None:
+    def add_new_habit(
+        self,
+        habit_name: str,
+        frequency: str,
+        category: str,
+        target_goal: int,
+        start_date: str,
+        entry_date=None,
+    ) -> pd.DataFrame:
         """
         Add a new habit to track
 
@@ -86,19 +104,12 @@ class HabitTracker(pd.DataFrame):
             entry_date: an optional argument that allows you to specify an entry date.
                         default is the current time.
         """
-        habit_name = data.DataParsing.format_str_input(input("Enter the habit name: "))
-        frequency = data.DataParsing.format_str_input(
-            input("Enter the frequency in the form X[D/M/Y]: ")
-        )
-        category = data.DataParsing.format_str_input(
-            input("Enter the habit category: ")
-        )
-        target_goal = data.DataParsing.parse_integer(
-            input("Enter the target number of repetitions: ")
-        )
-        start_date = data.DataParsing.format_str_input(
-            input("Enter the start date as YYYY/MM/DD: ")
-        )
+        habit_name = data.DataParsing.format_str_input(habit_name)
+        frequency = data.DataParsing.format_str_input(frequency)
+        category = data.DataParsing.format_str_input(category)
+        target_goal = data.DataParsing.parse_integer(target_goal)
+        start_date = data.DataParsing.format_str_input(start_date)
+
         enabled = True
         complete = False
         date_completed = pd.NaT
@@ -111,21 +122,20 @@ class HabitTracker(pd.DataFrame):
             "target_goal": target_goal,
             "entry_date": pd.to_datetime(entry_date)
             if entry_date
-            else pd.Timestamp.now(tz="utc").strftime("%Y%m%d %H%M%S"),
+            else pd.Timestamp.now(tz="utc").strftime("%Y-%m-%d %H:%M:%S"),
             "start_date": pd.to_datetime(start_date),
             "due_date": pd.to_datetime(due_date),
             "completion_date": pd.to_datetime(date_completed),
             "complete": complete,
             "enabled": enabled,
         }
-
-        self.loc[len(self)] = habit_dict
+        return pd.DataFrame([habit_dict])
 
     def log_completion(
         self,
+        id: int,
         habit: str | None = None,
         completion_date: str | None = None,
-        max_display: int = 10,
     ) -> None:
         """
         Log completion of a habit and create the record for its next due date.
@@ -135,27 +145,23 @@ class HabitTracker(pd.DataFrame):
             completion_date: optional argument to specify the completion date, default is the time of logging.
             max_display: the maximum number of records to show for selection, default is 10.
         """
-        # First get all records that are marked as incomplete
-        if habit:
-            print(
-                self[(self["habit"] == habit) & (self["complete"] == False)].head(
-                    max_display
-                )
-            )
-
-        else:
-            print(self[(self["complete"] == False)].head(max_display))
-        id = int(input("Select record id: "))
         completion_date = (
             pd.to_datetime(completion_date)
             if completion_date
-            else pd.Timestamp.now(tz="utc").strftime("%Y%m%d %H%M%S")
+            else pd.Timestamp.now(tz="utc").strftime("%Y:%m:%d %H:%M:%S")
         )
-        self.loc[id, ["completion_date", "complete"]] = [completion_date, True]
+        self.loc[id, ["completion_date", "complete"]] = [
+            pd.to_datetime(completion_date),
+            True,
+        ]
 
         if not habit:
             habit = self.loc[id, "habit"]
 
+        # Display Streak Rewards
+        self._streak_reward(habit)
+
+        # Create record for the next due date
         self._create_next_due(habit)
 
     def _create_next_due(self, habit):
@@ -174,7 +180,7 @@ class HabitTracker(pd.DataFrame):
         new_row = most_recent.to_dict()
         new_row["due_date"] = new_due_date
         new_row["completion_date"] = pd.NaT
-        new_row["complete"] = False
+        new_row["complete"] = None
 
         self.loc[len(self)] = new_row
 
@@ -202,22 +208,30 @@ class HabitTracker(pd.DataFrame):
 
     # Display
 
-    def display_stats(self):
+    def display_stats(self) -> None:
         """
         Displays streak and completion rate stats for all habits
         """
-        print("Habit Streak and Completion Stats")
-        for habit in self["habit"].unique():
+        st.write("Habit Streak and Completion Stats\n\n")
+        for habit, category in self[["habit", "category"]].drop_duplicates().values:
             output_string = str(
-                f"Habit: {habit} Current Streak = {self.get_current_streak(habit)} Best Streak = {self.get_best_streak(habit)}"
+                f"Habit: {habit} Category: {category}\n\nCurrent Streak = {self.get_current_streak(habit)} Best Streak = {self.get_best_streak(habit)}"
                 + f" Completion Rate = {self.calc_completion_rates().loc[habit]:.2%}"
             )
 
-            print(output_string)
+            st.write(output_string)
+            time_ranges = self.calc_completion_time_ranges()
+            try:
+                st.write(
+                    f"Most Successful Completion Time Range: {time_ranges[f"{habit}+{category}"]} hrs"
+                )
+                # Sometimes there is a KeyError pass if it occurs
+            except KeyError:
+                pass
 
-    def display_habits(self):
+    def display_habits(self) -> None:
         """Displays most fields for one record of each unique habit"""
-        habits = self.groupby(["habit"])[
+        habits = self.groupby(["habit", "category"])[
             [
                 "habit",
                 "frequency",
@@ -227,5 +241,26 @@ class HabitTracker(pd.DataFrame):
                 "start_date",
                 "enabled",
             ]
-        ].head(1)
-        print(habits)
+        ].tail(1)
+        st.write(habits)
+
+    def _streak_reward(self, habit: str) -> None:
+        """
+        Display message depending on the current streak for the given habit
+        Args:
+            habit:str the current habit which is being logged
+        """
+        current_streak = self.get_current_streak(habit)
+
+        if current_streak == 1:
+            st.toast("Congratulations!")
+        elif current_streak == 2:
+            st.toast("This is your second day!")
+        elif current_streak == 3:
+            st.toast("Well done!")
+        elif current_streak >= 4:
+            # Display a quote otherwise
+            quote, author = api._get_quote(api._get_response())
+            st.toast(f"{quote} \n - {author} \n\n Quotes provides by ZenQuotes API")
+        else:
+            pass

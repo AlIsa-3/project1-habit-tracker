@@ -11,6 +11,7 @@ def read_csv_data(
     return pd.read_csv(
         csv_filename,
         parse_dates=["start_date", "completion_date", "due_date", "entry_date"],
+        index_col=0,
     )
 
 

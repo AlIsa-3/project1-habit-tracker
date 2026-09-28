@@ -6,7 +6,6 @@ import data_svcs
 from cls_svcs import HabitTracker
 
 
-
 # Load data -- if not found then initialize without values
 def startup():
     try:
@@ -45,6 +44,7 @@ def startup():
 
     return data
 
+
 st.title("Habit Tracker App")
 st.write("⟵ Select an option on the left")
 
@@ -54,22 +54,3 @@ if "data" not in st.session_state:
 if st.session_state["data"] is None:
     st.session_state["data"] = startup()
 
-
-
-# Add Habit
-
-# # Log Habit Completion
-
-# View Streaks and Statistics
-
-
-# View Habits
-
-
-# View all Data
-
-
-
-# Edit DataFrame
-
-# Save Data to File
