@@ -12,6 +12,7 @@ readme = "README.md"
 dynamic = ["version"]
 
 [tool.poetry]
+package-mode = false
 version = "0.0.0"
 
 
